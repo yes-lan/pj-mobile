@@ -22,18 +22,94 @@ class XynpoApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0D6EFD)),
       ),
       home: const LoginPage(),
+      onGenerateRoute: (settings) {
+        // Fallback to default behavior; we primarily use Navigator.push with our helper
+        return null;
+      },
     );
   }
 }
 
+// Helper to push a new page with a fade + slide animation
+Future<T?> pushAnimated<T>(BuildContext context, Widget page) {
+  return Navigator.of(context).push<T>(PageRouteBuilder(
+    transitionDuration: const Duration(milliseconds: 350),
+    reverseTransitionDuration: const Duration(milliseconds: 250),
+    pageBuilder: (context, animation, secondaryAnimation) => page,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final tween = Tween<Offset>(begin: const Offset(0.0, 0.04), end: Offset.zero);
+      final fade = Tween<double>(begin: 0.0, end: 1.0);
+      return SlideTransition(
+        position: animation.drive(CurveTween(curve: Curves.easeOut)).drive(tween),
+        child: FadeTransition(opacity: animation.drive(fade), child: child),
+      );
+    },
+  ));
+}
+
+Future<T?> pushReplacementAnimated<T>(BuildContext context, Widget page) {
+  return Navigator.of(context).pushReplacement<T, T>(PageRouteBuilder(
+    transitionDuration: const Duration(milliseconds: 350),
+    reverseTransitionDuration: const Duration(milliseconds: 250),
+    pageBuilder: (context, animation, secondaryAnimation) => page,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final tween = Tween<Offset>(begin: const Offset(0.0, 0.04), end: Offset.zero);
+      final fade = Tween<double>(begin: 0.0, end: 1.0);
+      return SlideTransition(
+        position: animation.drive(CurveTween(curve: Curves.easeOut)).drive(tween),
+        child: FadeTransition(opacity: animation.drive(fade), child: child),
+      );
+    },
+  ));
+}
+
 class ApiConfig {
-  static const String baseUrl = 'https://facilitative-nonmonarchic-britt.ngrok-free.dev';
+  static const String baseUrl = 'https://std41.beaupeyrat.com';
+}
+
+// Custom HTTP client that accepts ngrok certificates
+class _NgrokHttpClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final httpClient = HttpClient()
+      ..badCertificateCallback = (_, __, ___) => true; // Accept all certificates for development
+    
+    HttpClientRequest httpClientRequest;
+    try {
+      httpClientRequest = await httpClient.openUrl(request.method, request.url);
+    } catch (e) {
+      return http.StreamedResponse(
+        Stream.value(utf8.encode('{"message":"Connection error"}')),
+        500,
+      );
+    }
+    
+    request.headers.forEach((name, value) {
+      httpClientRequest.headers.set(name, value);
+    });
+    
+    if (request.bodyBytes.isNotEmpty) {
+      httpClientRequest.add(request.bodyBytes);
+    }
+    
+    final httpClientResponse = await httpClientRequest.close();
+    
+    return http.StreamedResponse(
+      httpClientResponse.cast<List<int>>(),
+      httpClientResponse.statusCode,
+      contentLength: httpClientResponse.contentLength,
+      request: request,
+      headers: httpClientResponse.headers,
+      isRedirect: httpClientResponse.isRedirect,
+    );
+  }
 }
 
 class MobileApiClient {
-  MobileApiClient({required this.baseUrl});
+  MobileApiClient({required this.baseUrl}) : _httpClient = _NgrokHttpClient();
 
   final String baseUrl;
+  final http.Client _httpClient;
   String? _token;
 
   bool get isAuthenticated => _token != null;
@@ -47,7 +123,7 @@ class MobileApiClient {
 
     try {
       response = await _postJsonWithRedirect(
-        '/api/mobile/login',
+        '/api/login',
         loginPayload,
       ).timeout(const Duration(seconds: 20));
     } on SocketException catch (error) {
@@ -93,7 +169,7 @@ class MobileApiClient {
         ..headers.addAll(_defaultHeaders(contentType: 'application/json'))
         ..body = body;
 
-      final streamed = await request.send();
+      final streamed = await _httpClient.send(request);
       final response = await http.Response.fromStream(streamed);
 
       if (response.statusCode != 301 &&
@@ -139,7 +215,7 @@ class MobileApiClient {
   }
 
   Future<List<PatientSummary>> fetchPatients() async {
-    final response = await http.get(
+    final response = await _httpClient.get(
       Uri.parse('$baseUrl/api/mobile/patients'),
       headers: _authHeaders(),
     );
@@ -163,7 +239,7 @@ class MobileApiClient {
       return fetchPatients();
     }
 
-    final response = await http.get(
+    final response = await _httpClient.get(
       Uri.parse('$baseUrl/api/mobile/patients?q=${Uri.encodeQueryComponent(query)}'),
       headers: _authHeaders(),
     );
@@ -183,7 +259,7 @@ class MobileApiClient {
   }
 
   Future<PatientDetail> fetchPatientDetail(int patientId) async {
-    final response = await http.get(
+    final response = await _httpClient.get(
       Uri.parse('$baseUrl/api/mobile/patients/$patientId'),
       headers: _authHeaders(),
     );
@@ -205,7 +281,7 @@ class MobileApiClient {
   }
 
   Future<List<NoteItem>> fetchPatientNotes(int patientId) async {
-    final response = await http.get(
+    final response = await _httpClient.get(
       Uri.parse('$baseUrl/api/mobile/patients/$patientId/notes'),
       headers: _authHeaders(),
     );
@@ -226,7 +302,7 @@ class MobileApiClient {
   }
 
   Future<void> addPatientNote(int patientId, String content) async {
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/api/mobile/patients/$patientId/notes'),
       headers: _authHeaders()..['Content-Type'] = 'application/json',
       body: jsonEncode({'content': content}),
@@ -327,9 +403,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => HomePage(client: _client)),
-      );
+      await pushReplacementAnimated(context, HomePage(client: _client));
     } on ApiException catch (error) {
       setState(() {
         _error = error.message;
@@ -623,12 +697,11 @@ class _HomePageState extends State<HomePage> {
                         ),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => PatientDetailPage(
-                                client: widget.client,
-                                patient: patient,
-                              ),
+                          pushAnimated(
+                            context,
+                            PatientDetailPage(
+                              client: widget.client,
+                              patient: patient,
                             ),
                           );
                         },
