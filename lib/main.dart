@@ -64,7 +64,7 @@ Future<T?> pushReplacementAnimated<T>(BuildContext context, Widget page) {
 }
 
 class ApiConfig {
-  static const String baseUrl = 'https://facilitative-nonmonarchic-britt.ngrok-free.dev';
+  static const String baseUrl = 'https://std41.beaupeyrat.com';
 }
 
 // Custom HTTP client that accepts ngrok certificates
@@ -87,19 +87,21 @@ class _NgrokHttpClient extends http.BaseClient {
     request.headers.forEach((name, value) {
       httpClientRequest.headers.set(name, value);
     });
-    
-    if (request.bodyBytes.isNotEmpty) {
-      httpClientRequest.add(request.bodyBytes);
-    }
+
+    await httpClientRequest.addStream(request.finalize());
     
     final httpClientResponse = await httpClientRequest.close();
+    final responseHeaders = <String, String>{};
+    httpClientResponse.headers.forEach((name, values) {
+      responseHeaders[name] = values.join(', ');
+    });
     
     return http.StreamedResponse(
       httpClientResponse.cast<List<int>>(),
       httpClientResponse.statusCode,
       contentLength: httpClientResponse.contentLength,
       request: request,
-      headers: httpClientResponse.headers,
+      headers: responseHeaders,
       isRedirect: httpClientResponse.isRedirect,
     );
   }
