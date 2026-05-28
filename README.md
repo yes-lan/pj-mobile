@@ -6,7 +6,7 @@ Application Flutter connectée à l’API Symfony du dossier `Web` (auth JWT mob
 
 <div align="center">
 
-**[Télécharger l’APK](./build/app/outputs/flutter-apk/app-release.apk)**
+**[Télécharger l’APK](./build/app/outputs/flutter-apk/)**
 
 _L’APK de release se trouve ici après un `flutter build apk --release`._
 
