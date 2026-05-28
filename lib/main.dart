@@ -64,7 +64,10 @@ Future<T?> pushReplacementAnimated<T>(BuildContext context, Widget page) {
 }
 
 class ApiConfig {
-  static const String baseUrl = 'https://std41.beaupeyrat.com';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://std41.beaupeyrat.com',
+  );
 }
 
 // Custom HTTP client that accepts ngrok certificates
